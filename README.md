@@ -6,9 +6,14 @@ Save and send a collection of images right inside Discord.
 
 ## Install
 
-1. Install [BetterDiscord](https://betterdiscord.app/)
+1. Install [BetterDiscord](https://betterdiscord.app/).
 
-2. Download the [latest release]()
+   > ⚠️ **IMPORTANT** ⚠️ Installing and using BetterDiscord violates Discord's
+     terms of service. Visit [BetterDiscord's FAQ](https://betterdiscord.app/FAQ)
+     for more details.
+
+2. [Download](https://github.com/jasonliang-dev/costello/releases/download/v0.0.2/costello.plugin.js)
+   the latest release of Costello
 
 3. Move the file into the plugins folder. If you're on Windows, the
    plugins folder should be `%appdata%\BetterDiscord\plugins`
@@ -33,4 +38,4 @@ Save and send a collection of images right inside Discord.
    > Hitting enter when the search bar is focused will send
      the first image in the list.
 
-5. :tada:
+5. 🎉 yay 🎉
