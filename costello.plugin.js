@@ -2,7 +2,7 @@
  * @name Costello
  * @author Jason Liang
  * @description Save and send a collection of images right inside Discord
- * @version 0.0.1
+ * @version 0.0.2
  * @source https://github.com/jasonliang-dev/costello
  *
  * See end of file for license information
@@ -457,12 +457,11 @@ function App({
     setMenuOpen(true);
     setMode(MODE_SEARCH);
     setSearch("");
-    setStickers(stickers.sort((a, b) => a.name > b.name));
 
     if (searchBarEl.current !== null) {
       searchBarEl.current.focus();
     }
-  }, [stickers, setStickers]);
+  }, []);
   React.useEffect(() => {
     function onKeyPress(event) {
       if (event.ctrlKey && event.shiftKey && event.code === "KeyX") {
