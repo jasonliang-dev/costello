@@ -2,7 +2,7 @@
  * @name Costello
  * @author Jason Liang
  * @description Save and send a collection of images right inside Discord
- * @version 0.0.2
+ * @version 0.0.3
  * @source https://github.com/jasonliang-dev/costello
  *
  * See end of file for license information
@@ -22,24 +22,25 @@ const WINDOWS_TOPBAR_OFFSET = 21;
 const ALIGN_MENU_X_OFFSET = 65;
 
 function useLocalStorage(key, value, store) {
-  let realValue;
+  const [stored, setStored] = React.useState(() => {
+    try {
+      return JSON.parse(store.getItem(key)) || value;
+    } catch (e) {
+      BdApi.showToast(`[Costello] Could not parse value in localStorage.`, {
+        type: "error",
+      });
 
-  try {
-    realValue = JSON.parse(store.getItem(key)) || value;
-  } catch (e) {
-    BdApi.showToast(`[Costello] Could not parse value in localStorage.`, {
-      type: "error",
-    });
+      return value;
+    }
+  });
 
-    realValue = value;
-  }
-
-  const [stored, setStored] = React.useState(realValue);
-
-  function set(updated) {
-    setStored(updated);
-    store.setItem(key, JSON.stringify(updated));
-  }
+  const set = React.useCallback(
+    (updated) => {
+      setStored(updated);
+      store.setItem(key, JSON.stringify(updated));
+    },
+    [key, store]
+  );
 
   return [stored, set];
 }
@@ -77,27 +78,23 @@ const BigInputBar = React.forwardRef(({ value, change, icon }, ref) => (
 
 function OverflowContainer({ children }) {
   return (
-    <div style={{ paddingTop: "1rem" }}>
-      <div
-        style={{
-          paddingLeft: "1rem",
-          paddingRight: "1rem",
-          height: "24rem",
-          overflowY: "auto",
-          overflowX: "hidden",
-        }}
-        className="liang-scrollbar"
-      >
-        {children}
-      </div>
+    <div
+      style={{
+        flexGrow: 1,
+        paddingLeft: "1rem",
+        paddingRight: "1rem",
+        overflowY: "auto",
+        overflowX: "hidden",
+      }}
+      className="liang-scrollbar"
+    >
+      {children}
     </div>
   );
 }
 
 function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
   const sendImage = (link) => {
-    const channel = window.location.href.split("/").slice(-1)[0];
-
     const token = store.getItem("token");
     if (!token) {
       BdApi.showToast(`[Costello] Cannot get user token.`, {
@@ -106,6 +103,7 @@ function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
       return;
     }
 
+    const channel = window.location.href.split("/").slice(-1)[0];
     fetch(`https://discordapp.com/api/channels/${channel}/messages`, {
       headers: {
         Authorization: token.replace(/"/g, ""),
@@ -135,8 +133,6 @@ function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
         onSubmit={(e) => {
           e.preventDefault();
 
-          console.log("hi");
-
           const remaining = stickers.filter(
             (s) => s.name.toLowerCase().indexOf(search.toLowerCase()) !== -1
           );
@@ -145,7 +141,7 @@ function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
             sendImage(remaining[0].link);
           }
         }}
-        style={{ padding: "0 1rem" }}
+        style={{ padding: "0 1rem", paddingBottom: "1rem" }}
       >
         <BigInputBar
           ref={searchBarEl}
@@ -268,27 +264,29 @@ function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
 function StickerEdit({ stickers, setStickers, editBarEl }) {
   const [edit, setEdit] = React.useState("");
 
+  function addStickers(event) {
+    event.preventDefault();
+
+    if (edit.trim() !== "") {
+      const split = edit.split(" ");
+
+      setStickers([
+        ...split.map((link) => ({
+          name: link.replace(/^.*\//, ""),
+          link,
+        })),
+        ...stickers,
+      ]);
+    }
+
+    setEdit("");
+  }
+
   return (
     <>
       <form
-        style={{ display: "flex", padding: "0 1rem" }}
-        onSubmit={(e) => {
-          e.preventDefault();
-
-          if (edit.trim() !== "") {
-            const split = edit.split(" ");
-
-            setStickers([
-              ...split.map((link) => ({
-                name: link.replace(/^.*\//, ""),
-                link,
-              })),
-              ...stickers,
-            ]);
-          }
-
-          setEdit("");
-        }}
+        style={{ display: "flex", padding: "0 1rem", paddingBottom: "1rem" }}
+        onSubmit={addStickers}
       >
         <div style={{ flex: "1 1 0%" }}>
           <BigInputBar
@@ -330,7 +328,8 @@ function StickerEdit({ stickers, setStickers, editBarEl }) {
             color: "white",
             width: "5rem",
           }}
-          type="submit"
+          type="button"
+          onClick={addStickers /* type=submit triggers click event? why????? */}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -434,12 +433,22 @@ function App({ store }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [stickers, setStickers] = useLocalStorage("liang-costello", [], store);
   const [search, setSearch] = React.useState("");
-  const [menuPlacement, setMenuPlacement] = React.useState({ x: 0, y: 0 });
-  const [buttonPlacement, setButtonPlacement] = React.useState({ x: 0, y: 0 });
+  const [, setPlacementDirty] = React.useState({});
+  const menuPlacement = React.useRef({ x: 0, y: 0 });
+  const buttonPlacement = React.useRef({ x: 0, y: 0 });
   const searchBarEl = React.useRef(null);
   const editBarEl = React.useRef(null);
   const buttonEl = React.useRef(null);
   const menuEl = React.useRef(null);
+
+  function openMenu() {
+    setMenuOpen(true);
+    setMode(MODE_SEARCH);
+    setSearch("");
+    if (searchBarEl.current !== null) {
+      searchBarEl.current.focus();
+    }
+  }
 
   React.useEffect(() => {
     const isWindows = document.querySelector("html.platform-win");
@@ -448,13 +457,24 @@ function App({ store }) {
     function stayInPlace() {
       const textarea = document.querySelector("[class^=channelTextArea]");
 
+      let dirty = false;
+
       if (textarea) {
         const menuRect = textarea.getBoundingClientRect();
 
-        setMenuPlacement({
+        const placement = {
           x: menuRect.right - ALIGN_MENU_X_OFFSET,
-          y: menuRect.top - offsetY,
-        });
+          // 16px because of padding (from OverflowContainer?)
+          y: menuRect.top - offsetY - 16,
+        };
+
+        if (
+          placement.x !== menuPlacement.current.x ||
+          placement.y !== menuPlacement.current.y
+        ) {
+          dirty = true;
+          menuPlacement.current = placement;
+        }
       }
 
       const textareaButtons = document.querySelector(
@@ -463,29 +483,31 @@ function App({ store }) {
 
       if (textareaButtons) {
         const buttonRect = textareaButtons.getBoundingClientRect();
-        setButtonPlacement({
+
+        const placement = {
           // move 105px from the button group. not moving the button will overlap
           x: buttonRect.left - 105,
           y: buttonRect.top - offsetY,
-        });
+        };
+
+        if (
+          placement.x !== buttonPlacement.current.x ||
+          placement.y !== buttonPlacement.current.y
+        ) {
+          dirty = true;
+          buttonPlacement.current = placement;
+        }
+      }
+
+      if (dirty) {
+        setPlacementDirty({});
       }
     }
 
-    const interval = window.setInterval(stayInPlace, 1600);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, []);
-
-  React.useEffect(() => {
     function closeMenuOnOutsideClick(event) {
       if (buttonEl.current === null || menuEl.current === null) {
         return;
       }
-
-      const isWindows = document.querySelector("html.platform-win");
-      const offsetY = isWindows ? WINDOWS_TOPBAR_OFFSET : 0;
 
       // revert offsets from menuPlacement
       const mouse = {
@@ -493,9 +515,9 @@ function App({ store }) {
         y: event.clientY - offsetY,
       };
 
-      // element may have been removed. check if mouse is inside menu
-      // instead of checking if clicked elemenent was a child of the
-      // menu
+      // element may have been removed (when deleting a
+      // sticker). check if mouse is inside menu instead of checking
+      // if clicked elemenent was a child of the menu
       const mel = menuEl.current;
       const mouseInsideMenu =
         mel.offsetLeft <= mouse.x &&
@@ -508,23 +530,6 @@ function App({ store }) {
       }
     }
 
-    document.addEventListener("click", closeMenuOnOutsideClick);
-
-    return () => {
-      document.removeEventListener("click", closeMenuOnOutsideClick);
-    };
-  }, []);
-
-  const openMenu = React.useCallback(() => {
-    setMenuOpen(true);
-    setMode(MODE_SEARCH);
-    setSearch("");
-    if (searchBarEl.current !== null) {
-      searchBarEl.current.focus();
-    }
-  }, []);
-
-  React.useEffect(() => {
     function onKeyPress(event) {
       if (event.ctrlKey && event.shiftKey && event.code === "KeyX") {
         openMenu();
@@ -533,12 +538,16 @@ function App({ store }) {
       }
     }
 
+    const interval = window.setInterval(stayInPlace, 500);
+    document.addEventListener("click", closeMenuOnOutsideClick);
     document.addEventListener("keydown", onKeyPress);
 
     return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("click", closeMenuOnOutsideClick);
       document.removeEventListener("keydown", onKeyPress);
     };
-  }, [openMenu, mode]);
+  }, []);
 
   return (
     <div style={{ position: "absolute", zIndex: 110 }}>
@@ -547,8 +556,8 @@ function App({ store }) {
         type="button"
         onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
         style={{
-          left: buttonPlacement.x,
-          top: buttonPlacement.y,
+          left: buttonPlacement.current.x,
+          top: buttonPlacement.current.y,
           height: 44, // the default height of textarea (when theres one line of text)
           display: "flex",
           alignItems: "center",
@@ -576,41 +585,41 @@ function App({ store }) {
         ref={menuEl}
         style={(() => {
           const width = 600;
-          const defaultHeight = 514;
-          const height = menuEl.current ? menuEl.current.offsetHeight || defaultHeight : defaultHeight;
+          const height = 550;
           const margin = 8;
 
           return {
-            left: menuPlacement.x - width - margin,
-            top: menuPlacement.y - height - margin,
-            display: menuOpen ? "block" : "none",
+            left: menuPlacement.current.x - width - margin,
+            top: menuPlacement.current.y - height - margin,
+            display: menuOpen ? "flex" : "none",
+            flexDirection: "column",
             position: "absolute",
             backgroundColor: "var(--background-primary)",
             color: "white",
             borderRadius: "0.5rem",
             textAlign: "left",
             boxShadow: "var(--elevation-stroke), var(--elevation-high)",
+            paddingTop: "1rem",
             width,
+            height,
           };
         })()}
       >
-        <div style={{ paddingTop: "1rem" }}>
-          <div style={{ display: mode === MODE_SEARCH ? "block" : "none" }}>
-            <StickerSearch
-              search={search}
-              setSearch={setSearch}
-              searchBarEl={searchBarEl}
-              stickers={stickers}
-              store={store}
-            />
-          </div>
-          <div style={{ display: mode === MODE_EDIT ? "block" : "none" }}>
-            <StickerEdit
-              editBarEl={editBarEl}
-              stickers={stickers}
-              setStickers={setStickers}
-            />
-          </div>
+        <div style={{ display: mode === MODE_SEARCH ? "contents" : "none" }}>
+          <StickerSearch
+            search={search}
+            setSearch={setSearch}
+            searchBarEl={searchBarEl}
+            stickers={stickers}
+            store={store}
+          />
+        </div>
+        <div style={{ display: mode === MODE_EDIT ? "contents" : "none" }}>
+          <StickerEdit
+            editBarEl={editBarEl}
+            stickers={stickers}
+            setStickers={setStickers}
+          />
         </div>
         <div
           style={{
@@ -619,6 +628,7 @@ function App({ store }) {
             borderBottomRightRadius: "0.5rem",
             padding: "0.5rem",
             textAlign: "right",
+            flex: "none",
           }}
         >
           {(() => {

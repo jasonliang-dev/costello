@@ -2,7 +2,7 @@
  * @name Costello
  * @author Jason Liang
  * @description Save and send a collection of images right inside Discord
- * @version 0.0.2
+ * @version 0.0.3
  * @source https://github.com/jasonliang-dev/costello
  *
  * See end of file for license information
@@ -20,24 +20,20 @@ const WINDOWS_TOPBAR_OFFSET = 21;
 const ALIGN_MENU_X_OFFSET = 65;
 
 function useLocalStorage(key, value, store) {
-  let realValue;
-
-  try {
-    realValue = JSON.parse(store.getItem(key)) || value;
-  } catch (e) {
-    BdApi.showToast(`[Costello] Could not parse value in localStorage.`, {
-      type: "error"
-    });
-    realValue = value;
-  }
-
-  const [stored, setStored] = React.useState(realValue);
-
-  function set(updated) {
+  const [stored, setStored] = React.useState(() => {
+    try {
+      return JSON.parse(store.getItem(key)) || value;
+    } catch (e) {
+      BdApi.showToast(`[Costello] Could not parse value in localStorage.`, {
+        type: "error"
+      });
+      return value;
+    }
+  });
+  const set = React.useCallback(updated => {
     setStored(updated);
     store.setItem(key, JSON.stringify(updated));
-  }
-
+  }, [key, store]);
   return [stored, set];
 }
 
@@ -76,18 +72,14 @@ function OverflowContainer({
 }) {
   return /*#__PURE__*/React.createElement("div", {
     style: {
-      paddingTop: "1rem"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
+      flexGrow: 1,
       paddingLeft: "1rem",
       paddingRight: "1rem",
-      height: "24rem",
       overflowY: "auto",
       overflowX: "hidden"
     },
     className: "liang-scrollbar"
-  }, children));
+  }, children);
 }
 
 function StickerSearch({
@@ -98,7 +90,6 @@ function StickerSearch({
   store
 }) {
   const sendImage = link => {
-    const channel = window.location.href.split("/").slice(-1)[0];
     const token = store.getItem("token");
 
     if (!token) {
@@ -108,6 +99,7 @@ function StickerSearch({
       return;
     }
 
+    const channel = window.location.href.split("/").slice(-1)[0];
     fetch(`https://discordapp.com/api/channels/${channel}/messages`, {
       headers: {
         Authorization: token.replace(/"/g, ""),
@@ -134,7 +126,6 @@ function StickerSearch({
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("form", {
     onSubmit: e => {
       e.preventDefault();
-      console.log("hi");
       const remaining = stickers.filter(s => s.name.toLowerCase().indexOf(search.toLowerCase()) !== -1);
 
       if (remaining.length > 0) {
@@ -142,7 +133,8 @@ function StickerSearch({
       }
     },
     style: {
-      padding: "0 1rem"
+      padding: "0 1rem",
+      paddingBottom: "1rem"
     }
   }, /*#__PURE__*/React.createElement(BigInputBar, {
     ref: searchBarEl,
@@ -241,24 +233,28 @@ function StickerEdit({
   editBarEl
 }) {
   const [edit, setEdit] = React.useState("");
+
+  function addStickers(event) {
+    event.preventDefault();
+
+    if (edit.trim() !== "") {
+      const split = edit.split(" ");
+      setStickers([...split.map(link => ({
+        name: link.replace(/^.*\//, ""),
+        link
+      })), ...stickers]);
+    }
+
+    setEdit("");
+  }
+
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("form", {
     style: {
       display: "flex",
-      padding: "0 1rem"
+      padding: "0 1rem",
+      paddingBottom: "1rem"
     },
-    onSubmit: e => {
-      e.preventDefault();
-
-      if (edit.trim() !== "") {
-        const split = edit.split(" ");
-        setStickers([...split.map(link => ({
-          name: link.replace(/^.*\//, ""),
-          link
-        })), ...stickers]);
-      }
-
-      setEdit("");
-    }
+    onSubmit: addStickers
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       flex: "1 1 0%"
@@ -295,7 +291,10 @@ function StickerEdit({
       color: "white",
       width: "5rem"
     },
-    type: "submit"
+    type: "button",
+    onClick: addStickers
+    /* type=submit triggers click event? why????? */
+
   }, /*#__PURE__*/React.createElement("svg", {
     xmlns: "http://www.w3.org/2000/svg",
     style: {
@@ -380,11 +379,12 @@ function App({
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [stickers, setStickers] = useLocalStorage("liang-costello", [], store);
   const [search, setSearch] = React.useState("");
-  const [menuPlacement, setMenuPlacement] = React.useState({
+  const [, setPlacementDirty] = React.useState({});
+  const menuPlacement = React.useRef({
     x: 0,
     y: 0
   });
-  const [buttonPlacement, setButtonPlacement] = React.useState({
+  const buttonPlacement = React.useRef({
     x: 0,
     y: 0
   });
@@ -392,53 +392,72 @@ function App({
   const editBarEl = React.useRef(null);
   const buttonEl = React.useRef(null);
   const menuEl = React.useRef(null);
+
+  function openMenu() {
+    setMenuOpen(true);
+    setMode(MODE_SEARCH);
+    setSearch("");
+
+    if (searchBarEl.current !== null) {
+      searchBarEl.current.focus();
+    }
+  }
+
   React.useEffect(() => {
     const isWindows = document.querySelector("html.platform-win");
     const offsetY = isWindows ? WINDOWS_TOPBAR_OFFSET : 0;
 
     function stayInPlace() {
       const textarea = document.querySelector("[class^=channelTextArea]");
+      let dirty = false;
 
       if (textarea) {
         const menuRect = textarea.getBoundingClientRect();
-        setMenuPlacement({
+        const placement = {
           x: menuRect.right - ALIGN_MENU_X_OFFSET,
-          y: menuRect.top - offsetY
-        });
+          // 16px because of padding (from OverflowContainer?)
+          y: menuRect.top - offsetY - 16
+        };
+
+        if (placement.x !== menuPlacement.current.x || placement.y !== menuPlacement.current.y) {
+          dirty = true;
+          menuPlacement.current = placement;
+        }
       }
 
       const textareaButtons = document.querySelector("[class^=channelTextArea] [class^=buttons]");
 
       if (textareaButtons) {
         const buttonRect = textareaButtons.getBoundingClientRect();
-        setButtonPlacement({
+        const placement = {
           // move 105px from the button group. not moving the button will overlap
           x: buttonRect.left - 105,
           y: buttonRect.top - offsetY
-        });
+        };
+
+        if (placement.x !== buttonPlacement.current.x || placement.y !== buttonPlacement.current.y) {
+          dirty = true;
+          buttonPlacement.current = placement;
+        }
+      }
+
+      if (dirty) {
+        setPlacementDirty({});
       }
     }
 
-    const interval = window.setInterval(stayInPlace, 1600);
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, []);
-  React.useEffect(() => {
     function closeMenuOnOutsideClick(event) {
       if (buttonEl.current === null || menuEl.current === null) {
         return;
-      }
+      } // revert offsets from menuPlacement
 
-      const isWindows = document.querySelector("html.platform-win");
-      const offsetY = isWindows ? WINDOWS_TOPBAR_OFFSET : 0; // revert offsets from menuPlacement
 
       const mouse = {
         x: event.clientX - ALIGN_MENU_X_OFFSET,
         y: event.clientY - offsetY
-      }; // element may have been removed. check if mouse is inside menu
-      // instead of checking if clicked elemenent was a child of the
-      // menu
+      }; // element may have been removed (when deleting a
+      // sticker). check if mouse is inside menu instead of checking
+      // if clicked elemenent was a child of the menu
 
       const mel = menuEl.current;
       const mouseInsideMenu = mel.offsetLeft <= mouse.x && mouse.x <= mel.offsetLeft + mel.offsetWidth && mel.offsetTop <= mouse.y && mouse.y <= mel.offsetTop + mel.offsetHeight;
@@ -448,21 +467,6 @@ function App({
       }
     }
 
-    document.addEventListener("click", closeMenuOnOutsideClick);
-    return () => {
-      document.removeEventListener("click", closeMenuOnOutsideClick);
-    };
-  }, []);
-  const openMenu = React.useCallback(() => {
-    setMenuOpen(true);
-    setMode(MODE_SEARCH);
-    setSearch("");
-
-    if (searchBarEl.current !== null) {
-      searchBarEl.current.focus();
-    }
-  }, []);
-  React.useEffect(() => {
     function onKeyPress(event) {
       if (event.ctrlKey && event.shiftKey && event.code === "KeyX") {
         openMenu();
@@ -471,11 +475,15 @@ function App({
       }
     }
 
+    const interval = window.setInterval(stayInPlace, 500);
+    document.addEventListener("click", closeMenuOnOutsideClick);
     document.addEventListener("keydown", onKeyPress);
     return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("click", closeMenuOnOutsideClick);
       document.removeEventListener("keydown", onKeyPress);
     };
-  }, [openMenu, mode]);
+  }, []);
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
@@ -486,8 +494,8 @@ function App({
     type: "button",
     onClick: () => menuOpen ? setMenuOpen(false) : openMenu(),
     style: {
-      left: buttonPlacement.x,
-      top: buttonPlacement.y,
+      left: buttonPlacement.current.x,
+      top: buttonPlacement.current.y,
       height: 44,
       // the default height of textarea (when theres one line of text)
       display: "flex",
@@ -514,29 +522,27 @@ function App({
     ref: menuEl,
     style: (() => {
       const width = 600;
-      const defaultHeight = 514;
-      const height = menuEl.current ? menuEl.current.offsetHeight || defaultHeight : defaultHeight;
+      const height = 550;
       const margin = 8;
       return {
-        left: menuPlacement.x - width - margin,
-        top: menuPlacement.y - height - margin,
-        display: menuOpen ? "block" : "none",
+        left: menuPlacement.current.x - width - margin,
+        top: menuPlacement.current.y - height - margin,
+        display: menuOpen ? "flex" : "none",
+        flexDirection: "column",
         position: "absolute",
         backgroundColor: "var(--background-primary)",
         color: "white",
         borderRadius: "0.5rem",
         textAlign: "left",
         boxShadow: "var(--elevation-stroke), var(--elevation-high)",
-        width
+        paddingTop: "1rem",
+        width,
+        height
       };
     })()
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      paddingTop: "1rem"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: mode === MODE_SEARCH ? "block" : "none"
+      display: mode === MODE_SEARCH ? "contents" : "none"
     }
   }, /*#__PURE__*/React.createElement(StickerSearch, {
     search: search,
@@ -546,19 +552,20 @@ function App({
     store: store
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      display: mode === MODE_EDIT ? "block" : "none"
+      display: mode === MODE_EDIT ? "contents" : "none"
     }
   }, /*#__PURE__*/React.createElement(StickerEdit, {
     editBarEl: editBarEl,
     stickers: stickers,
     setStickers: setStickers
-  }))), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       backgroundColor: "var(--background-secondary)",
       borderBottomLeftRadius: "0.5rem",
       borderBottomRightRadius: "0.5rem",
       padding: "0.5rem",
-      textAlign: "right"
+      textAlign: "right",
+      flex: "none"
     }
   }, (() => {
     const buttonStyle = {
