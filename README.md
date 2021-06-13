@@ -25,17 +25,16 @@ Save and send a collection of images right inside Discord.
 1. Click on the new icon in the text message area, then click on
    Add/Remove Stickers.
 
-   > You can open the menu with `Control + Shift + X`
-
 2. Copy and paste an image link (or several links, separated by
    spaces) into the text area at the top. Click Add, or hit enter.
 
 3. Change the names of each image to your liking. Click Back.
 
-4. Then click on an image to send it. You can use the search bar to
-   filter images by name.
+4. Click on an image to send it. You can use the search bar to filter
+   images by name.
 
-   > Hitting enter when the search bar is focused will send
-     the first image in the list.
+   > ⌨️ For you keyboard users: you can also open the menu with
+     `Control + Shift + X`. Use the arrow keys to select a
+     sticker. Hit enter to send the highlighted sticker.
 
 5. 🎉 yay 🎉
