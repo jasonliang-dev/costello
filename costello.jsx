@@ -2,7 +2,7 @@
  * @name Costello
  * @author Jason Liang
  * @description Save and send a collection of images right inside Discord
- * @version 0.0.3
+ * @version 0.0.4
  * @source https://github.com/jasonliang-dev/costello
  *
  * See end of file for license information
@@ -388,7 +388,7 @@ function StickerEdit({ stickers, setStickers, editBarEl }) {
                 onChange={(e) =>
                   setStickers(
                     stickers.map((s) =>
-                      s.name === sticker.name
+                      s.link === sticker.link
                         ? { name: e.target.value, link: s.link }
                         : s
                     )

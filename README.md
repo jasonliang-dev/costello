@@ -12,7 +12,7 @@ Save and send a collection of images right inside Discord.
      terms of service. Visit [BetterDiscord's FAQ](https://betterdiscord.app/FAQ)
      for more details.
 
-2. [Download](https://github.com/jasonliang-dev/costello/releases/download/v0.0.3/costello.plugin.js)
+2. [Download](https://github.com/jasonliang-dev/costello/releases/download/v0.0.4/costello.plugin.js)
    the latest release of Costello
 
 3. Move the file into the plugins folder. If you're on Windows, the

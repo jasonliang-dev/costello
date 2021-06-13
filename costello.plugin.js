@@ -344,7 +344,7 @@ function StickerEdit({
     },
     type: "text",
     value: sticker.name,
-    onChange: e => setStickers(stickers.map(s => s.name === sticker.name ? {
+    onChange: e => setStickers(stickers.map(s => s.link === sticker.link ? {
       name: e.target.value,
       link: s.link
     } : s))
