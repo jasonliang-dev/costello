@@ -2,7 +2,7 @@
  * @name Costello
  * @author Jason Liang
  * @description Save and send a collection of images right inside Discord
- * @version 0.0.5
+ * @version 0.0.6
  * @source https://github.com/jasonliang-dev/costello
  * @updateUrl https://raw.githubusercontent.com/jasonliang-dev/costello/master/costello.plugin.js
  *
@@ -16,9 +16,13 @@ const IFRAME_ID = "liang-costello-iframe";
 const APP_ID = "liang-costello-app";
 const CSS_ID = "liang-costello-css";
 const MODE_SEARCH = "MODE_SEARCH";
-const MODE_EDIT = "MODE_EDIT";
+const MODE_EDIT = "MODE_EDIT"; // spooky numbers
+
 const WINDOWS_TOPBAR_OFFSET = 21;
-const ALIGN_MENU_X_OFFSET = 65;
+const ALIGN_MENU_X_OFFSET = 65; // number of columns in search mode. used to calculate the number of
+// stickers to skip when up/down arrow is pressed
+
+const GRID_COLUMNS = 6;
 
 function useLocalStorage(key, value, store) {
   const [stored, setStored] = React.useState(() => {
@@ -86,8 +90,10 @@ function OverflowContainer({
 function StickerSearch({
   search,
   setSearch,
+  selected,
+  setSelected,
   searchBarEl,
-  stickers,
+  remainingStickers,
   store
 }) {
   const sendImage = link => {
@@ -127,10 +133,9 @@ function StickerSearch({
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("form", {
     onSubmit: e => {
       e.preventDefault();
-      const remaining = stickers.filter(s => s.name.toLowerCase().indexOf(search.toLowerCase()) !== -1);
 
-      if (remaining.length > 0) {
-        sendImage(remaining[0].link);
+      if (selected >= 0 && selected < remainingStickers.length) {
+        sendImage(remainingStickers[selected].link);
       }
     },
     style: {
@@ -158,7 +163,7 @@ function StickerSearch({
       strokeWidth: 2,
       d: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
     }))
-  })), /*#__PURE__*/React.createElement(OverflowContainer, null, stickers.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement(OverflowContainer, null, remainingStickers.length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexDirection: "column",
@@ -186,18 +191,19 @@ function StickerSearch({
       fontSize: "1.5rem",
       fontWeight: "bold"
     }
-  }, "No stickers yet.")) : /*#__PURE__*/React.createElement("ul", {
+  }, "No stickers.")) : /*#__PURE__*/React.createElement("ul", {
     style: {
       display: "grid",
-      gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+      gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
       gap: "1rem",
       paddingBottom: "1rem"
     }
-  }, stickers.map(sticker => /*#__PURE__*/React.createElement("li", {
+  }, remainingStickers.map((sticker, index) => /*#__PURE__*/React.createElement("li", {
     key: sticker.link,
     style: {
-      display: sticker.name.toLowerCase().indexOf(search.toLowerCase()) === -1 ? "none" : "block",
-      textAlign: "center"
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center"
     }
   }, /*#__PURE__*/React.createElement("button", {
     style: {
@@ -206,11 +212,12 @@ function StickerSearch({
       display: "flex",
       justifyContent: "center",
       alignItems: "center",
-      width: "100%"
+      width: "100%",
+      backgroundColor: selected === index ? "var(--background-accent)" : "var(--background-secondary)"
     },
-    className: "liang-bg-secondary h:liang-bg-accent",
     type: "button",
-    onClick: () => sendImage(sticker.link)
+    onClick: () => sendImage(sticker.link),
+    onMouseEnter: () => setSelected(index)
   }, /*#__PURE__*/React.createElement("img", {
     style: {
       objectFit: "contain",
@@ -223,7 +230,10 @@ function StickerSearch({
     style: {
       color: "var(--text-normal)",
       display: "inline-block",
-      paddingTop: "0.25rem"
+      paddingTop: "0.25rem",
+      overflowWrap: "break-word",
+      width: "100%",
+      textAlign: "center"
     }
   }, sticker.name))))));
 }
@@ -239,8 +249,7 @@ function StickerEdit({
     event.preventDefault();
 
     if (edit.trim() !== "") {
-      const split = edit.split(" ");
-      setStickers([...split.map(link => ({
+      setStickers([...edit.split(" ").map(link => ({
         name: link.replace(/^.*\//, ""),
         link
       })), ...stickers]);
@@ -380,6 +389,7 @@ function App({
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [stickers, setStickers] = useLocalStorage("liang-costello", [], store);
   const [search, setSearch] = React.useState("");
+  const [selected, setSelected] = React.useState(0);
   const [, setPlacementDirty] = React.useState({});
   const menuPlacement = React.useRef({
     x: 0,
@@ -400,7 +410,9 @@ function App({
     setSearch("");
 
     if (searchBarEl.current !== null) {
-      searchBarEl.current.focus();
+      window.requestAnimationFrame(() => {
+        searchBarEl.current.focus();
+      });
     }
   }
 
@@ -485,6 +497,43 @@ function App({
       document.removeEventListener("keydown", onKeyPress);
     };
   }, []);
+  const remainingStickers = React.useMemo(() => stickers.filter(sticker => sticker.name.toLowerCase().indexOf(search.toLowerCase()) !== -1), [stickers, search]);
+  React.useEffect(() => {
+    if (remainingStickers.length === 0) {
+      return;
+    }
+
+    if (selected >= remainingStickers.length) {
+      setSelected(remainingStickers.length - 1);
+    }
+  }, [selected, remainingStickers.length]);
+  React.useEffect(() => {
+    function onKeyPress(event) {
+      let offset = 0;
+      offset += (event.code === "ArrowLeft") * -1;
+      offset += (event.code === "ArrowRight") * 1;
+      offset += (event.code === "ArrowUp") * -GRID_COLUMNS;
+      offset += (event.code === "ArrowDown") * GRID_COLUMNS;
+
+      if (offset !== 0 && menuOpen && mode === MODE_SEARCH) {
+        event.preventDefault();
+        setSelected(s => {
+          const updated = s + offset;
+
+          if (updated >= 0 && updated < remainingStickers.length) {
+            return updated;
+          }
+
+          return s;
+        });
+      }
+    }
+
+    document.addEventListener("keydown", onKeyPress);
+    return () => {
+      document.removeEventListener("keydown", onKeyPress);
+    };
+  }, [remainingStickers.length, menuOpen, mode]);
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
@@ -548,8 +597,10 @@ function App({
   }, /*#__PURE__*/React.createElement(StickerSearch, {
     search: search,
     setSearch: setSearch,
+    selected: selected,
+    setSelected: setSelected,
     searchBarEl: searchBarEl,
-    stickers: stickers,
+    remainingStickers: remainingStickers,
     store: store
   })), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -640,18 +691,14 @@ class Costello {
           .liang-group:hover .gh\\:liang-visible {
             visibility: visible;
           }
-          .liang-bg-secondary {
-            background-color: var(--background-secondary);
-          }
-          .h\\:liang-bg-accent:hover {
-            background-color: var(--background-accent);
-          }
+
           .liang-interactive-normal {
             color: var(--interactive-normal);
           }
           .h\\:liang-interactive-active:hover {
             color: var(--interactive-active);
           }
+
           .liang-scrollbar::-webkit-scrollbar {
             width: 0.5rem;
           }

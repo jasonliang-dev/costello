@@ -2,7 +2,7 @@
  * @name Costello
  * @author Jason Liang
  * @description Save and send a collection of images right inside Discord
- * @version 0.0.5
+ * @version 0.0.6
  * @source https://github.com/jasonliang-dev/costello
  * @updateUrl https://raw.githubusercontent.com/jasonliang-dev/costello/master/costello.plugin.js
  *
@@ -19,8 +19,13 @@ const CSS_ID = "liang-costello-css";
 const MODE_SEARCH = "MODE_SEARCH";
 const MODE_EDIT = "MODE_EDIT";
 
+// spooky numbers
 const WINDOWS_TOPBAR_OFFSET = 21;
 const ALIGN_MENU_X_OFFSET = 65;
+
+// number of columns in search mode. used to calculate the number of
+// stickers to skip when up/down arrow is pressed
+const GRID_COLUMNS = 6;
 
 function useLocalStorage(key, value, store) {
   const [stored, setStored] = React.useState(() => {
@@ -94,7 +99,15 @@ function OverflowContainer({ children }) {
   );
 }
 
-function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
+function StickerSearch({
+  search,
+  setSearch,
+  selected,
+  setSelected,
+  searchBarEl,
+  remainingStickers,
+  store,
+}) {
   const sendImage = (link) => {
     const token = store.getItem("token");
     if (!token) {
@@ -134,12 +147,8 @@ function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
         onSubmit={(e) => {
           e.preventDefault();
 
-          const remaining = stickers.filter(
-            (s) => s.name.toLowerCase().indexOf(search.toLowerCase()) !== -1
-          );
-
-          if (remaining.length > 0) {
-            sendImage(remaining[0].link);
+          if (selected >= 0 && selected < remainingStickers.length) {
+            sendImage(remainingStickers[selected].link);
           }
         }}
         style={{ padding: "0 1rem", paddingBottom: "1rem" }}
@@ -172,7 +181,7 @@ function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
         />
       </form>
       <OverflowContainer>
-        {stickers.length === 0 ? (
+        {remainingStickers.length === 0 ? (
           <div
             style={{
               display: "flex",
@@ -197,28 +206,25 @@ function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
               />
             </svg>
             <span style={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-              No stickers yet.
+              No stickers.
             </span>
           </div>
         ) : (
           <ul
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+              gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
               gap: "1rem",
               paddingBottom: "1rem",
             }}
           >
-            {stickers.map((sticker) => (
+            {remainingStickers.map((sticker, index) => (
               <li
                 key={sticker.link}
                 style={{
-                  display:
-                    sticker.name.toLowerCase().indexOf(search.toLowerCase()) ===
-                    -1
-                      ? "none"
-                      : "block",
-                  textAlign: "center",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
                 }}
               >
                 <button
@@ -229,10 +235,14 @@ function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
                     justifyContent: "center",
                     alignItems: "center",
                     width: "100%",
+                    backgroundColor:
+                      selected === index
+                        ? "var(--background-accent)"
+                        : "var(--background-secondary)",
                   }}
-                  className="liang-bg-secondary h:liang-bg-accent"
                   type="button"
                   onClick={() => sendImage(sticker.link)}
+                  onMouseEnter={() => setSelected(index)}
                 >
                   <img
                     style={{
@@ -249,6 +259,9 @@ function StickerSearch({ search, setSearch, searchBarEl, stickers, store }) {
                     color: "var(--text-normal)",
                     display: "inline-block",
                     paddingTop: "0.25rem",
+                    overflowWrap: "break-word",
+                    width: "100%",
+                    textAlign: "center",
                   }}
                 >
                   {sticker.name}
@@ -269,10 +282,8 @@ function StickerEdit({ stickers, setStickers, editBarEl }) {
     event.preventDefault();
 
     if (edit.trim() !== "") {
-      const split = edit.split(" ");
-
       setStickers([
-        ...split.map((link) => ({
+        ...edit.split(" ").map((link) => ({
           name: link.replace(/^.*\//, ""),
           link,
         })),
@@ -434,6 +445,7 @@ function App({ store }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [stickers, setStickers] = useLocalStorage("liang-costello", [], store);
   const [search, setSearch] = React.useState("");
+  const [selected, setSelected] = React.useState(0);
   const [, setPlacementDirty] = React.useState({});
   const menuPlacement = React.useRef({ x: 0, y: 0 });
   const buttonPlacement = React.useRef({ x: 0, y: 0 });
@@ -447,7 +459,9 @@ function App({ store }) {
     setMode(MODE_SEARCH);
     setSearch("");
     if (searchBarEl.current !== null) {
-      searchBarEl.current.focus();
+      window.requestAnimationFrame(() => {
+        searchBarEl.current.focus();
+      });
     }
   }
 
@@ -550,6 +564,56 @@ function App({ store }) {
     };
   }, []);
 
+  const remainingStickers = React.useMemo(
+    () =>
+      stickers.filter(
+        (sticker) =>
+          sticker.name.toLowerCase().indexOf(search.toLowerCase()) !== -1
+      ),
+    [stickers, search]
+  );
+
+  React.useEffect(() => {
+    if (remainingStickers.length === 0) {
+      return;
+    }
+
+    if (selected >= remainingStickers.length) {
+      setSelected(remainingStickers.length - 1);
+    }
+  }, [selected, remainingStickers.length]);
+
+  React.useEffect(() => {
+    function onKeyPress(event) {
+      let offset = 0;
+      offset += (event.code === "ArrowLeft") * -1;
+      offset += (event.code === "ArrowRight") * 1;
+
+      offset += (event.code === "ArrowUp") * -GRID_COLUMNS;
+      offset += (event.code === "ArrowDown") * GRID_COLUMNS;
+
+      if (offset !== 0 && menuOpen && mode === MODE_SEARCH) {
+        event.preventDefault();
+
+        setSelected((s) => {
+          const updated = s + offset;
+
+          if (updated >= 0 && updated < remainingStickers.length) {
+            return updated;
+          }
+
+          return s;
+        });
+      }
+    }
+
+    document.addEventListener("keydown", onKeyPress);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyPress);
+    };
+  }, [remainingStickers.length, menuOpen, mode]);
+
   return (
     <div style={{ position: "absolute", zIndex: 110 }}>
       <button
@@ -610,8 +674,10 @@ function App({ store }) {
           <StickerSearch
             search={search}
             setSearch={setSearch}
+            selected={selected}
+            setSelected={setSelected}
             searchBarEl={searchBarEl}
-            stickers={stickers}
+            remainingStickers={remainingStickers}
             store={store}
           />
         </div>
@@ -720,18 +786,14 @@ class Costello {
           .liang-group:hover .gh\\:liang-visible {
             visibility: visible;
           }
-          .liang-bg-secondary {
-            background-color: var(--background-secondary);
-          }
-          .h\\:liang-bg-accent:hover {
-            background-color: var(--background-accent);
-          }
+
           .liang-interactive-normal {
             color: var(--interactive-normal);
           }
           .h\\:liang-interactive-active:hover {
             color: var(--interactive-active);
           }
+
           .liang-scrollbar::-webkit-scrollbar {
             width: 0.5rem;
           }
