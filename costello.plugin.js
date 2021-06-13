@@ -2,8 +2,9 @@
  * @name Costello
  * @author Jason Liang
  * @description Save and send a collection of images right inside Discord
- * @version 0.0.3
+ * @version 0.0.5
  * @source https://github.com/jasonliang-dev/costello
+ * @updateUrl https://raw.githubusercontent.com/jasonliang-dev/costello/master/costello.plugin.js
  *
  * See end of file for license information
  */
