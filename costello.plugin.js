@@ -2,9 +2,8 @@
  * @name Costello
  * @author Jason Liang
  * @description Save and send a collection of images right inside Discord
- * @version 0.0.6
+ * @version 0.0.7
  * @source https://github.com/jasonliang-dev/costello
- * @updateUrl https://raw.githubusercontent.com/jasonliang-dev/costello/master/costello.plugin.js
  *
  * See end of file for license information
  */
@@ -12,6 +11,8 @@
 const {
   React
 } = BdApi;
+const VERSION = "0.0.7";
+const UPDATE_URL = "https://raw.githubusercontent.com/jasonliang-dev/costello/master/costello.plugin.js";
 const IFRAME_ID = "liang-costello-iframe";
 const APP_ID = "liang-costello-app";
 const CSS_ID = "liang-costello-css";
@@ -649,9 +650,52 @@ function App({
   })())));
 }
 
+function compareVersion(left, right) {
+  const l = left.split(".");
+  const r = right.split(".");
+
+  for (let i = 0; i < 3; i += 1) {
+    const ll = parseInt(l[i], 10);
+    const rr = parseInt(r[i], 10);
+
+    if (ll > rr) {
+      return 1;
+    }
+
+    if (ll < rr) {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+function checkForUpdate() {
+  fetch(UPDATE_URL).then(res => {
+    if (res.status !== 200) {
+      throw new Error();
+    }
+
+    return res.text();
+  }).then(text => {
+    const version = /^ \* @version (.*)$/gm.exec(text);
+
+    if (!version || !version[1]) {
+      throw new Error();
+    }
+
+    return version[1];
+  }).then(v => {
+    if (compareVersion(v, VERSION) === 1) {
+      BdApi.showToast(`[Costello] New version available (v${v})`);
+    }
+  }).catch(() => {});
+}
+
 class Costello {
   // eslint-disable-next-line class-methods-use-this
   start() {
+    checkForUpdate();
     const iframe = document.createElement("iframe");
     iframe.id = IFRAME_ID;
     const store = document.head.appendChild(iframe).contentWindow.frames.localStorage;
